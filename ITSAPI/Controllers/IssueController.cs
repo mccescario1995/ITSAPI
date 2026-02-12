@@ -9,6 +9,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using LinqKit;
 
 namespace ITSAPI.Controllers;
 
@@ -105,12 +106,30 @@ public class IssueController : ControllerBase
 
             if (!string.IsNullOrWhiteSpace(search))
             {
-                query = query.Where(u => u.Id.ToString().Contains( search )||         
-                                         u.IssueDetails.ToLower().Contains(search) ||
-                                         u.ActionPlan.ToLower().Contains(search) ||
-                                         u.IssueType.ToLower().Contains(search) ||
-                                         u.ResponsibleGroupName.ToLower().Contains(search) ||
-                                         u.ResponsibleEmployee.ToLower().Contains(search));
+                //query = query.Where(u => u.Id.ToString().Contains( search )||         
+                //                         u.IssueDetails.ToLower().Contains(search) ||
+                //                         u.ActionPlan.ToLower().Contains(search) ||
+                //                         u.IssueType.ToLower().Contains(search) ||
+                //                         u.ResponsibleGroupName.ToLower().Contains(search) ||
+                //                         u.ResponsibleEmployee.ToLower().Contains(search));
+
+                var searchWords = search.ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+                // Start with TRUE so we can AND each word
+                var predicate = PredicateBuilder.New<ItsVIssue>(true);
+                foreach (var word in searchWords)
+                {
+                    predicate = predicate.And(u =>
+                        u.Id.ToString().Contains(word) ||
+                        (u.IssueDetails ?? "").ToLower().Contains(word) ||
+                        (u.ActionPlan ?? "").ToLower().Contains(word) ||
+                        (u.IssueType ?? "").ToLower().Contains(word) ||
+                        (u.ResponsibleGroupName ?? "").ToLower().Contains(word) ||
+                        (u.ResponsibleEmployee ?? "").ToLower().Contains(word)
+                    );
+                }
+
+                query = query.Where(predicate);
             }
 
             var totalCount = await query.CountAsync();
@@ -145,11 +164,65 @@ public class IssueController : ControllerBase
         }
     }
 
+    //[HttpPost("update/{id}")]
+    //public async Task<IActionResult> UpdateIssue(
+    //    int id,
+    //    [FromBody] UpdateIssueDto updateIssueDto
+    //)
+    //{
+    //    await using var transaction = await _context.Database.BeginTransactionAsync();
+
+    //    try
+    //    {
+    //        var issue = await _context.ItsIssues
+    //            .FirstOrDefaultAsync(u => u.Id == id && u.Isdelete == 0);
+
+    //        if (issue == null)
+    //        {
+    //            return NotFound(new
+    //            {
+    //                success = false,
+    //                message = "Issue not found"
+    //            });
+    //        }
+
+    //        issue.Isusedetails = updateIssueDto.IssueDetails;
+    //        issue.Actionplan = updateIssueDto.ActionPlan;
+    //        issue.Issuetypeid = updateIssueDto.IssueTypeId;
+    //        issue.Responsiblegroupid = updateIssueDto.ResponsibleGroupId;
+    //        issue.Responsibleempid = updateIssueDto.ResponsibleEmpId;
+    //        issue.Status = updateIssueDto.Status;
+
+    //        issue.Modifiedbyuserid = updateIssueDto.ModifiedByUserId;
+    //        issue.Modifieddate = DateTime.Now;
+
+    //        await _context.SaveChangesAsync();
+    //        await transaction.CommitAsync();
+
+    //        return Ok(new
+    //        {
+    //            success = true,
+    //            message = "Issue updated successfully",
+    //        });
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        await transaction.RollbackAsync();
+
+    //        return StatusCode(500, new
+    //        {
+    //            success = false,
+    //            message = "An error occurred while updating the issue",
+    //            error = ex.Message
+    //        });
+    //    }
+    //}
+
     [HttpPost("update/{id}")]
     public async Task<IActionResult> UpdateIssue(
-        int id,
-        [FromBody] UpdateIssueDto updateIssueDto
-    )
+    int id,
+    [FromBody] UpdateIssueDto dto
+)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
 
@@ -167,14 +240,26 @@ public class IssueController : ControllerBase
                 });
             }
 
-            issue.Isusedetails = updateIssueDto.IssueDetails;
-            issue.Actionplan = updateIssueDto.ActionPlan;
-            issue.Issuetypeid = updateIssueDto.IssueTypeId;
-            issue.Responsiblegroupid = updateIssueDto.ResponsibleGroupId;
-            issue.Responsibleempid = updateIssueDto.ResponsibleEmpId;
-            issue.Status = updateIssueDto.Status;
+            // Only update if value is provided
+            if (dto.IssueDetails != null)
+                issue.Isusedetails = dto.IssueDetails;
 
-            issue.Modifiedbyuserid = updateIssueDto.ModifiedByUserId;
+            if (dto.ActionPlan != null)
+                issue.Actionplan = dto.ActionPlan;
+
+            if (dto.IssueTypeId.HasValue)
+                issue.Issuetypeid = dto.IssueTypeId.Value;
+
+            if (dto.ResponsibleGroupId.HasValue)
+                issue.Responsiblegroupid = dto.ResponsibleGroupId.Value;
+
+            if (dto.ResponsibleEmpId != null)
+                issue.Responsibleempid = dto.ResponsibleEmpId;
+
+            if (dto.Status.HasValue)
+                issue.Status = dto.Status.Value;
+
+            issue.Modifiedbyuserid = dto.ModifiedByUserId;
             issue.Modifieddate = DateTime.Now;
 
             await _context.SaveChangesAsync();
@@ -183,7 +268,7 @@ public class IssueController : ControllerBase
             return Ok(new
             {
                 success = true,
-                message = "Issue updated successfully",
+                message = "Issue updated successfully"
             });
         }
         catch (Exception ex)
@@ -198,6 +283,7 @@ public class IssueController : ControllerBase
             });
         }
     }
+
 
 
     [HttpPost("delete/{id}")]

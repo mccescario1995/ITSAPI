@@ -1,4 +1,5 @@
 using ITSAPI.Models;
+using LinqKit;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -82,20 +83,36 @@ public class TableController : ControllerBase
 
     // Get all employee
     [HttpGet("get-employee")]
-    public async Task<IActionResult> GetEmployee(
-        [FromQuery] string? search = null)
+    public async Task<IActionResult> GetEmployee([FromQuery] string? search = null)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(search))
                 return Ok(new List<object>());
 
-            var query = _context.CoreVEmployeeDetails.Where(u => u.Employeename.ToLower().Contains(search.ToLower()));
+            var searchWords = search
+                .Trim()
+                .ToLower()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-            var data = await query
+            // AND across words
+            var predicate = PredicateBuilder.New<CoreVEmployeeDetail>(true);
+
+            foreach (var word in searchWords)
+            {
+                predicate = predicate.And(u =>
+                    (u.Fname ?? "").ToLower().Contains(word) ||
+                    (u.Lname ?? "").ToLower().Contains(word) ||
+                    (u.Mname ?? "").ToLower().Contains(word)
+                );
+            }
+
+            var data = await _context.CoreVEmployeeDetails
+                .Where(predicate)
                 .OrderBy(u => u.Lname)
                 .Take(15)
-                .Select(u => new {
+                .Select(u => new
+                {
                     u.EmplId,
                     u.Employeename
                 })
@@ -104,17 +121,53 @@ public class TableController : ControllerBase
             return Ok(new
             {
                 success = true,
-                data = new
-                {
-                    items = data
-                }
+                data = new { items = data }
             });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { message = "An error occurred while processing your request.", error = ex.Message });
+            return StatusCode(500, new
+            {
+                message = "An error occurred while processing your request.",
+                error = ex.Message
+            });
         }
     }
+
+
+    //public async Task<IActionResult> GetEmployee(
+    //    [FromQuery] string? search = null)
+    //{
+    //    try
+    //    {
+    //        if (string.IsNullOrWhiteSpace(search))
+    //            return Ok(new List<object>());
+
+    //        var query = _context.CoreVEmployeeDetails.Where(u => u.Employeename.ToLower().Contains(search.ToLower()));
+
+    //        var data = await query
+    //            .OrderBy(u => u.Lname)
+    //            .Take(15)
+    //            .Select(u => new {
+    //                u.EmplId,
+    //                u.Employeename
+    //            })
+    //            .ToListAsync();
+
+    //        return Ok(new
+    //        {
+    //            success = true,
+    //            data = new
+    //            {
+    //                items = data
+    //            }
+    //        });
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        return StatusCode(500, new { message = "An error occurred while processing your request.", error = ex.Message });
+    //    }
+    //}
 
     // Get all status
     [HttpGet("get-status")]

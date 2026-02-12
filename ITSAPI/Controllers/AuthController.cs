@@ -24,7 +24,7 @@ public class AuthController : ControllerBase
         _configuration = configuration;
     }
 
-    [HttpPost("login")]
+    [HttpPost("login")] // not in use 
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var user = await _context.CoreVUsers.FirstOrDefaultAsync(u => u.Username == request.Username);

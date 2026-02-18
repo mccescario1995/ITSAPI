@@ -444,5 +444,209 @@ public class IssueController : ControllerBase
         });
     }
 
+    // ======================
+    // LOCKING ENDPOINTS
+    // ======================
+
+    // GET: api/issue/{id}/lock-status
+    [HttpGet("{id}/lock-status")]
+    public async Task<IActionResult> GetLockStatus(int id)
+    {
+        try
+        {
+            var issue = await _context.ItsIssues
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == id);
+
+            if (issue == null)
+            {
+                return NotFound(new { success = false, message = "Issue not found" });
+            }
+
+            // Check if lock is expired
+            bool isLocked = false;
+            object? lockedBy = null;
+            string? lockedAt = null;
+
+            if (issue.LockedByUserId.HasValue && issue.LockExpiresAt.HasValue)
+            {
+                if (issue.LockExpiresAt.Value > DateTime.Now)
+                {
+                    isLocked = true;
+                    
+                    // Get username for the locked user
+                    var user = await _context.CoreVUsers
+                        .Where(u => u.UserId == issue.LockedByUserId.Value)
+                        .Select(u => new
+                        {
+                            u.UserId,
+                            u.Firstname,
+                            u.Lastname
+                        })
+                        .FirstOrDefaultAsync();
+
+                    if (user != null)
+                    {
+                        lockedBy = new
+                        {
+                            userId = user.UserId,
+                            username = $"{user.Firstname} {user.Lastname}"
+                        };
+                    }
+
+                    lockedAt = issue.LockedAt?.ToString("o");
+                }
+            }
+
+            return Ok(new
+            {
+                isLocked,
+                lockedBy,
+                lockedAt
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { success = false, message = "Error getting lock status", error = ex.Message });
+        }
+    }
+
+    // POST: api/issue/{id}/lock
+    [HttpPost("{id}/lock")]
+    public async Task<IActionResult> LockIssue(int id)
+    {
+        try
+        {
+            var userId = HttpContext.Session.GetInt32("UserId");
+            if (userId == null)
+            {
+                return Unauthorized(new { success = false, message = "User not logged in" });
+            }
+
+            var issue = await _context.ItsIssues.FirstOrDefaultAsync(u => u.Id == id);
+
+            if (issue == null)
+            {
+                return NotFound(new { success = false, message = "Issue not found" });
+            }
+
+            // Check if already locked
+            if (issue.LockedByUserId.HasValue && issue.LockExpiresAt.HasValue && issue.LockExpiresAt.Value > DateTime.Now)
+            {
+                // Check if same user is trying to lock
+                if (issue.LockedByUserId.Value == userId.Value)
+                {
+                    // Refresh the lock for the same user
+                    issue.LockedAt = DateTime.Now;
+                    issue.LockExpiresAt = DateTime.Now.AddMinutes(10);
+                    await _context.SaveChangesAsync();
+                    return Ok(new { success = true });
+                }
+
+                // Someone else has the lock
+                var lockingUser = await _context.CoreVUsers
+                    .Where(u => u.UserId == issue.LockedByUserId.Value)
+                    .Select(u => new
+                    {
+                        u.UserId,
+                        username = $"{u.Firstname} {u.Lastname}"
+                    })
+                    .FirstOrDefaultAsync();
+
+                return Ok(new
+                {
+                    success = false,
+                    isLocked = true,
+                    lockedBy = lockingUser,
+                    lockedAt = issue.LockedAt?.ToString("o")
+                });
+            }
+
+            // Acquire the lock
+            issue.LockedByUserId = userId.Value;
+            issue.LockedAt = DateTime.Now;
+            issue.LockExpiresAt = DateTime.Now.AddMinutes(10);
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { success = false, message = "Error locking issue", error = ex.Message });
+        }
+    }
+
+    // POST: api/issue/{id}/unlock
+    [HttpPost("{id}/unlock")]
+    public async Task<IActionResult> UnlockIssue(int id)
+    {
+        try
+        {
+            var userId = HttpContext.Session.GetInt32("UserId");
+            if (userId == null)
+            {
+                return Unauthorized(new { success = false, message = "User not logged in" });
+            }
+
+            var issue = await _context.ItsIssues.FirstOrDefaultAsync(u => u.Id == id);
+
+            if (issue == null)
+            {
+                return NotFound(new { success = false, message = "Issue not found" });
+            }
+
+            // Only the user who locked it can unlock
+            if (issue.LockedByUserId == userId.Value)
+            {
+                issue.LockedByUserId = null;
+                issue.LockedAt = null;
+                issue.LockExpiresAt = null;
+
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { success = false, message = "Error unlocking issue", error = ex.Message });
+        }
+    }
+
+    // POST: api/issue/{id}/heartbeat
+    [HttpPost("{id}/heartbeat")]
+    public async Task<IActionResult> Heartbeat(int id)
+    {
+        try
+        {
+            var userId = HttpContext.Session.GetInt32("UserId");
+            if (userId == null)
+            {
+                return Unauthorized(new { success = false, message = "User not logged in" });
+            }
+
+            var issue = await _context.ItsIssues.FirstOrDefaultAsync(u => u.Id == id);
+
+            if (issue == null)
+            {
+                return NotFound(new { success = false, message = "Issue not found" });
+            }
+
+            // Only the user who locked it can refresh
+            if (issue.LockedByUserId == userId.Value)
+            {
+                issue.LockExpiresAt = DateTime.Now.AddMinutes(10);
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { success = false, message = "Error updating heartbeat", error = ex.Message });
+        }
+    }
+
 
 }

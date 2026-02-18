@@ -28,4 +28,11 @@ public partial class ItsIssue
     public int? Modifiedbyuserid { get; set; }
 
     public DateTime? Modifieddate { get; set; }
+
+    // Locking fields
+    public int? LockedByUserId { get; set; }
+
+    public DateTime? LockedAt { get; set; }
+
+    public DateTime? LockExpiresAt { get; set; }
 }

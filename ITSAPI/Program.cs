@@ -1,4 +1,5 @@
 using ITSAPI.Models;
+using ITSAPI.Services;
 using ITSAPI.TokenAuthentication;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -55,6 +56,10 @@ builder.Services.AddSession(options =>
 
 //Token manager(optional now)
 builder.Services.AddScoped<ITokenManager, TokenManager>();
+
+// Email Notification Service
+builder.Services.AddScoped<EmailNotificationService>();
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 

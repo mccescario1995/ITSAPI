@@ -89,7 +89,9 @@ public class AuthController : ControllerBase
         var userId = HttpContext.Session.GetInt32("UserId");
 
         if (userId == null)
+        {
             return Unauthorized("Session expired or not logged in");
+        }
 
         return Ok(new
         {

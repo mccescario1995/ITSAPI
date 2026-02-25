@@ -10,6 +10,8 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using LinqKit;
+using ITSAPI.Services;
+
 
 namespace ITSAPI.Controllers;
 
@@ -20,12 +22,14 @@ public class IssueController : ControllerBase
     private readonly ItsDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly ILogger<IssueController> _logger;
+    public readonly EmailNotificationService _emailService;
 
-    public IssueController(ItsDbContext context, IConfiguration configuration, ILogger<IssueController> logger)
+    public IssueController(ItsDbContext context, IConfiguration configuration, ILogger<IssueController> logger, EmailNotificationService emailService)
     {
         _context = context;
         _configuration = configuration;
         _logger = logger;
+        _emailService = emailService;
     }
 
     [HttpGet("{id}")]
@@ -40,11 +44,11 @@ public class IssueController : ControllerBase
 
             return Ok(new
             {
-                success= true,
+                success = true,
                 items = issue
             });
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             return StatusCode(500, new { message = "An error occurred while processing your request.", error = ex.Message });
         }
@@ -78,8 +82,21 @@ public class IssueController : ControllerBase
                 Createddate = DateTime.Now
             };
 
+            var empId = await _context.CoreVUsers
+                .Where(u => u.UserId == createIssueDto.CreatedByUserId)
+                .Select(u => u.EmplId)
+                .FirstOrDefaultAsync();
+
+            var email = await _context.CoreVEmployeeDetails
+                .Where(u => u.EmplId == empId.ToString())
+                .Select(u => u.Emailadd)
+                .FirstOrDefaultAsync();
+
+            _logger.LogInformation("EMAIL:" ,email);
+
             _context.ItsIssuethreads.Add(newIssueThread);
             await _context.SaveChangesAsync();
+            await _emailService.SendNewCreateIssueEmailAsync( email , newIssue.Id.ToString());
 
             await transaction.CommitAsync();
 
@@ -133,7 +150,7 @@ public class IssueController : ControllerBase
             }
 
             var totalCount = await query.CountAsync();
-            
+
 
             var issues = await query
                 .OrderByDescending(u => u.CreatedDate)
@@ -292,7 +309,7 @@ public class IssueController : ControllerBase
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            var issue = await _context.ItsIssues.FirstOrDefaultAsync(u => u.Id == id &&  u.Isdelete == 0);
+            var issue = await _context.ItsIssues.FirstOrDefaultAsync(u => u.Id == id && u.Isdelete == 0);
 
             if (issue == null)
             {
@@ -346,7 +363,7 @@ public class IssueController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok( new
+        return Ok(new
         {
             success = true,
             items = messages
@@ -473,7 +490,7 @@ public class IssueController : ControllerBase
                 if (issue.LockExpiresAt.Value > DateTime.Now)
                 {
                     isLocked = true;
-                    
+
                     // Get username for the locked user
                     var user = await _context.CoreVUsers
                         .Where(u => u.UserId == issue.LockedByUserId.Value)

